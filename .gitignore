@@ -1,0 +1,7 @@
+testScrape/spiders/Aaron_Tech_Dump
+testScrape/spiders/ChurchOfReality_Dump
+testScrape/spiders/Perkel_Dump
+testScrape/spiders/configAaronTech.json
+testScrape/spiders/configChurchOfReality.json
+testScrape/spiders/configPerkel.json
+*.pyc

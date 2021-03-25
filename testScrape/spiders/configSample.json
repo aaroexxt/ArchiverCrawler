@@ -1,0 +1,5 @@
+{
+	"folderName": "Sample_Dump",
+	"startUrls": ["http://example.com/"],
+	"allowedDomains": ["example.com"]
+}
