@@ -9,7 +9,7 @@ import time
 
 cwd = os.path.dirname(os.path.realpath(__file__))
 
-cfg_path = "configChurchOfReality.json"
+cfg_path = "configPerkel.json"
 
 config = json.load(open(os.path.join(cwd, cfg_path), "r"))
 folderName = config["folderName"]
@@ -76,9 +76,9 @@ class CoaSpider(scrapy.Spider):
                         break
 
                 if not os.path.exists(mediaPaths[i]) and allowedDownload:
-                    r = requests.get(mediaUrls[i], stream=True)
+                    r = requests.get(mediaUrls[i].strip().strip('"'), stream=True)
                     if r.status_code == 200:
-                        with open(mediaPaths[i], 'wb') as f:
+                        with open(mediaPaths[i].strip().strip('"'), 'wb') as f:
                             for chunk in r:
                                 f.write(chunk)
 
