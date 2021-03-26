@@ -11,12 +11,14 @@ from tqdm import tqdm
 
 cwd = os.path.dirname(os.path.realpath(__file__))
 
-cfg_path = "configPerkel.json"
+cfg_path = "configAaronTech.json"
 config = json.load(open(os.path.join(cwd, cfg_path), "r"))
 
 # TODO: Depth limit https://stackoverflow.com/questions/27805952/scrapy-set-depth-limit-per-allowed-domains
 # Possibly limit it in other ways https://stackoverflow.com/questions/30448532/scrapy-wait-for-a-specific-url-to-be-parsed-before-parsing-others
-
+# TODO: Fix local file storage
+# Stop using response.css, go back to passthrough and use use https://github.com/scrapy/parsel instead to extract with text=response.body
+# Also possibly fix links in external files to always point to local directory instead of remote?
 
 class CoaSpider(scrapy.Spider):
 	name = 'coa'
@@ -29,8 +31,6 @@ class CoaSpider(scrapy.Spider):
 	crawledCount = 0
 	discoveredLinks = len(start_urls)
 
-	link_extractor = LinkExtractor()
-
 	def __init__(self, **kw):
 		super(CoaSpider, self).__init__()
 
@@ -42,6 +42,10 @@ class CoaSpider(scrapy.Spider):
 			yield SplashRequest(url, self.parse, args={'wait': 1, 'html': 1})
 
 	def parse(self, response):
+		pR = self.parse_page(response)
+		yield pR
+
+	def parse_page(self, response):
 		self.crawledCount+=1
 		self.pbar.n = self.crawledCount
 		self.pbar.set_description(response.url)
@@ -54,9 +58,11 @@ class CoaSpider(scrapy.Spider):
 			# Ensure the subdirs exist, since we're not in a root directory
 			self.createSubdirs(os.path.join(cwd, config["folderName"]), URLparts["fullPath"])
 			filepath = os.path.join(cwd, config["folderName"], *URLparts["fullPath"], URLparts["page"])
-			
+			if "." not in URLparts["page"]:
+				filepath+=".unknown"
+
 			if is_path_exists_or_creatable(filepath):
-				if not os.path.exists(filepath): # Ensure we don't overwrite
+				if not os.path.isfile(filepath): # Ensure we don't overwrite
 					self.logger.debug("FILE WRITE: "+filepath)
 					with open(filepath, 'wb') as f:
 							f.write(response.body)
@@ -81,30 +87,48 @@ class CoaSpider(scrapy.Spider):
 			mediaUrls += result["urls"]
 			mediaPaths += result["paths"]
 
-			# Actually download them
-			for i in range(0, len(mediaUrls)):
-				allowedDownload = False # Is the media that we are requesting from the original website?
-				for allowedDomain in self.allowed_domains:
-					if allowedDomain in mediaUrls[i]:
-						allowedDownload = True
-						break
+			# Filter items already downloaded
+			finalMediaPaths = []
+			finalMediaUrls = []
+			for idx in range(0, len(mediaPaths)):
+				path = mediaPaths[idx]
+				url = mediaUrls[idx]
 
-				if not os.path.exists(mediaPaths[i]) and allowedDownload:
-					r = requests.get(mediaUrls[i].strip().strip('"'), stream=True)
-					if r.status_code == 200:
-						with open(mediaPaths[i].strip().strip('"'), 'wb') as f:
-							for chunk in r:
-								f.write(chunk)
+				if is_path_exists_or_creatable(path) and not os.path.isfile(path):
+					if "." not in self.extractURLParts(url)["page"]:
+						path+=".unknown"
+					finalMediaPaths.append(path)
+					finalMediaUrls.append(url)
+					self.logger.debug("MEDIA: downloading "+path)
+				else:
+					self.logger.debug("MEDIA: Local copy of "+path+" being used")
+
+			# Actually download them
+			if len(finalMediaPaths) > 0:
+				for i in range(0, len(finalMediaUrls)):
+					allowedDownload = False # Is the media that we are requesting from the original website?
+					for allowedDomain in self.allowed_domains:
+						if allowedDomain in finalMediaUrls[i]:
+							allowedDownload = True
+							break
+
+					mediaPath = finalMediaPaths[i].strip().strip('"')
+					if not os.path.exists(mediaPath) and allowedDownload:
+						r = requests.get(finalMediaUrls[i].strip().strip('"'), stream=True)
+						if r.status_code == 200:
+							with open(mediaPath, 'wb') as f:
+								for chunk in r:
+									f.write(chunk)
 
 		nextLinks = []
-		for link in self.link_extractor.extract_links(response):
+		for link in response.css("a::attr(href)").extract():
 			# Clean out any special characters etc
-			link.url = self.cleanLink(link.url)
+			link = self.cleanLink(link)
 
-			if (link.url is not None) and (link.url not in self.links): # We've found a new link we haven't seen
-				nextLinks.append(link.url)
-				self.links.append(link.url)
-				self.logger.debug("NEW LINK: "+link.url)
+			if (link is not None) and (link not in self.links): # We've found a new link we haven't seen
+				nextLinks.append(link)
+				self.links.append(link)
+				self.logger.debug("NEW LINK: "+link)
 
 		if len(nextLinks) > 0:
 			self.logger.debug("\nDiscovered "+str(len(nextLinks))+" new link(s)")
@@ -113,7 +137,23 @@ class CoaSpider(scrapy.Spider):
 			self.pbar.refresh()
 
 			for link in nextLinks:
-				yield SplashRequest(link, self.parse, args={'wait': 1, 'html': 1}) #crawl it
+				# First we check if a local copy exists on the disk
+				localParts = self.extractURLParts(link)
+				filepath = os.path.join(cwd, config["folderName"], *localParts["fullPath"], localParts["page"])
+				if "." not in localParts["page"]:
+					filepath+=".unknown"
+				if is_path_exists_or_creatable(filepath) and os.path.isfile(filepath):
+					with open(filepath, 'r') as file:
+						filedata = file.read()
+					response = scrapy.http.HtmlResponse(url=link, body=filedata, encoding="utf-8")
+					print("RESPONSE: Local file "+filepath+" being used")
+					return self.parse_page(response)
+				else:
+					# No local resource exists, so crawl it
+					return SplashRequest(link, self.parse, args={'wait': 1, 'html': 1})
+		else:
+			print("NO LINKS FOUND IN: "+response.url)
+
 
 	@classmethod
 	def from_crawler(cls, crawler, *args, **kwargs):
@@ -153,7 +193,7 @@ class CoaSpider(scrapy.Spider):
 				"subdir": parsed.netloc,
 				"page": page,
 				"path": path,
-				"fullPath": [i for i in ([parsed.netloc]+path) if i]
+				"fullPath": [j.split(":")[0] for j in [i for i in ([parsed.netloc]+path) if i]]
 			})
 
 	def cleanLink(self, url):
@@ -166,6 +206,9 @@ class CoaSpider(scrapy.Spider):
 
 	def createSubdirs(self, base, subdirs):
 		if len(subdirs) != 0:
+			for idx in range(0, len(subdirs)):
+				subdirs[idx] = subdirs[idx].split(":")[0]
+
 			for idx in range(0, len(subdirs)):
 				direc = os.path.join(base, *subdirs[:(idx+1)])
 				if os.path.exists(direc) and not os.path.isdir(direc): # Uhoh it's a file
