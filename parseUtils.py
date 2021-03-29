@@ -9,20 +9,26 @@ def extractURLParts(url):
 	if len(parsed.path) == 0 or parsed.path == "/" or parsed.path == None:
 		return({
 			"subdir": parsed.netloc,
-			"page": "index.html", #default to base page
+			"page": "", #default to base page
 			"path": [],
 			"fullPath": [parsed.netloc]
 		})
 	else:
 		path = [i for i in parsed.path.split("/") if i]
-		page = path[-1] # page is top dir
-		path = path[:-1] # page is everything else
+
+		if "." in path[-1]: # Is there a file extension?
+			page = path[-1] # page is top dir
+			path = path[:-1] # page is everything else
+		else:
+			page = ""
+
 		return({
-			"subdir": parsed.netloc,
-			"page": page,
-			"path": path,
-			"fullPath": [j.split(":")[0] for j in [i for i in ([parsed.netloc]+path) if i]]
-		})
+				"subdir": parsed.netloc,
+				"page": page,
+				"path": path,
+				"fullPath": [j.split(":")[0] for j in [i for i in ([parsed.netloc]+path) if i]]
+			})
+
 
 def cleanLink(url):
 	parsed = urlparse(url.strip())
@@ -50,6 +56,8 @@ def createSubdirs(base, subdirs):
 				logging.debug("SUBDIR CREATE: "+direc)
 				os.mkdir(direc)
 
+
+# Takes a list of links and returns urls and filepaths for them
 def extractMedia(config, baseURL, mediaURLS):
 	extractedURLS = []
 	extractedPaths = []
@@ -74,6 +82,21 @@ def extractMedia(config, baseURL, mediaURLS):
 		"urls": extractedURLS,
 		"paths": extractedPaths
 	})
+
+def forceAbsoluteLink(baseURL, linkURL):
+	baseParts = extractURLParts(baseURL)
+	parts = extractURLParts(linkURL)
+
+	baseLoc = "http://"+"/".join(baseParts["fullPath"])
+	if baseLoc[-1] != "/":
+		baseLoc += "/"
+
+	print(baseLoc)
+	if parts["subdir"] == "":
+		return urljoin(baseLoc,linkURL)
+	else:
+		# Absolute path
+		return linkURL
 
 def removeEmptyFolders(path):
 	count = 0

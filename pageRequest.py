@@ -3,7 +3,7 @@ from parsel import Selector
 
 class SplashRequest():
 	def __init__(self, url, **kw):
-		r = requests.get('http://localhost:8050/render.html', params={'url': url, 'wait': 1})
+		r = requests.get('http://localhost:8050/render.html', params={'url': url, 'wait': 15})
 		self.url = url
 		self.status = r.status_code
 		if (r.status_code == 200):
