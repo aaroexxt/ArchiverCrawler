@@ -72,6 +72,11 @@ class ArchiverCrawler():
 		self.pbar.refresh()
 
 		if response.status != 404:
+			# Make sure we have something to parse
+			if response.body is None:
+				logging.warn("Response.body=None on "+response.url)
+				return False
+			
 			# Extract subdirectory, page, path from url
 			URLparts = parseUtils.extractURLParts(response.url)
 			
@@ -82,11 +87,7 @@ class ArchiverCrawler():
 				filepath+=".unknown"
 
 			if is_path_exists_or_creatable(filepath):
-				if response.body is None:
-					logging.warn("Response.body=None on "+response.url)
-					return False
-				else:
-					if not os.path.isfile(filepath): # Ensure we don't overwrite
+				if not os.path.isfile(filepath): # Ensure we don't overwrite
 						logging.debug("FILE WRITE: "+filepath)
 						with open(filepath, 'w', encoding="utf8") as f:
 								f.write(response.body)
@@ -160,35 +161,35 @@ class ArchiverCrawler():
 				else:
 					logging.debug("MEDIA: Local copy of "+url+" being used")
 
-		if len(nextLinks) > 0:
-			logging.debug("\nDiscovered "+str(len(nextLinks))+" new link(s)")
-			self.discoveredLinks+=len(nextLinks)
-			self.pbar.total = self.discoveredLinks
-			self.pbar.refresh()
+			if len(nextLinks) > 0:
+				logging.debug("\nDiscovered "+str(len(nextLinks))+" new link(s)")
+				self.discoveredLinks+=len(nextLinks)
+				self.pbar.total = self.discoveredLinks
+				self.pbar.refresh()
 
-			for link in nextLinks:
-				# First we check if a local copy exists on the disk
-				filepath = self.get_url_filepath(link)
-				if is_path_exists_or_creatable(filepath) and os.path.isfile(filepath):
-					with open(filepath, 'r') as file:
-						filedata = file.read()
-					logging.debug("RESPONSE: Local file at "+filepath+" being used")
-					res = self.parse_page(LocalRequest(link, filedata))
-					if not res: #Error discovered
-						logging.warn("NoneType in response discovered; was probably media (LocalCache)")
-						self.downloadMedia(link, filepath)
-				else:
-					# No local resource exists, so crawl it
-					logging.debug("RESPONSE: Remote dir "+link+" being used")
-					res = self.parse_page(SplashRequest(link))
-					if not res:
-						logging.warn("NoneType in response discovered; was probably media (SplashRequest)")
-						self.downloadMedia(link, self.get_url_filepath(link))
+				for link in nextLinks:
+					# First we check if a local copy exists on the disk
+					filepath = self.get_url_filepath(link)
+					if is_path_exists_or_creatable(filepath) and os.path.isfile(filepath):
+						with open(filepath, 'r') as file:
+							filedata = file.read()
+						logging.debug("RESPONSE: Local file at "+filepath+" being used")
+						res = self.parse_page(LocalRequest(link, filedata))
+						if not res: #Error discovered
+							logging.warn("NoneType in response discovered; was probably media (LocalCache)")
+							self.downloadMedia(link, filepath)
+					else:
+						# No local resource exists, so crawl it
+						logging.debug("RESPONSE: Remote dir "+link+" being used")
+						res = self.parse_page(SplashRequest(link))
+						if not res:
+							logging.warn("NoneType in response discovered; was probably media (SplashRequest)")
+							self.downloadMedia(link, self.get_url_filepath(link))
 
-		else:
-			logging.debug("NO LINKS FOUND IN: "+response.url)
+			else:
+				logging.debug("NO LINKS FOUND IN: "+response.url)
 
-		return 1
+		return True
 
 	def download_media(self, url, filepath):
 		url = url.strip().strip('"')
