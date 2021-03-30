@@ -92,5 +92,6 @@ mediaExtensions = [
 	"flv",
 	"ogg",
 	"webm",
-	"mp4"
+	"mp4",
+	"m4v"
 ]

@@ -5,7 +5,7 @@ class SplashRequest():
 	def __init__(self, url, **kw):
 		r = requests.get('http://localhost:8050/render.html', params={
 			'url': url,
-			'wait': 1, 
+			'wait': 0.25, 
 			'html5_media': 1,
 			'html': 1,
 			'resource_timeout': 10,

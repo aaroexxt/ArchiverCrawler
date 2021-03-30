@@ -52,6 +52,11 @@ class ArchiverCrawler():
 		self.pbar = tqdm(total=self.discoveredLinks, ascii=True)
 		self.pbar.update(0)
 
+		# Remove previous temp files
+		num = parseUtils.removeTempFiles(os.path.join(cwd, self.config["folderName"]))
+		if num>0:
+			logging.info("Cleaned directory structure and removed %d temporary files from previous run", num)
+
 		for url in self.start_urls:
 			self.parse_page(SplashRequest(url))
 		self.cleanup()
@@ -62,6 +67,8 @@ class ArchiverCrawler():
 		direc = os.path.join(cwd, self.config["folderName"])
 		num = parseUtils.removeEmptyFolders(direc)
 		logging.info("Cleaned directory structure and removed %d empty folders", num)
+		num = parseUtils.removeTempFiles(direc)
+		logging.info("Cleaned directory structure and removed %d temporary files", num)
 
 
 	# All the actual things
@@ -82,15 +89,15 @@ class ArchiverCrawler():
 			
 			# Ensure the subdirs exist, since we're not in a root directory
 			parseUtils.createSubdirs(os.path.join(cwd, self.config["folderName"]), URLparts["fullPath"])
-			filepath = os.path.join(cwd, self.config["folderName"], *URLparts["fullPath"], URLparts["page"])
-			if "." not in URLparts["page"]:
-				filepath+=".unknown"
+			filepath = self.get_url_filepath(response.url)
+			tempfilepath = filepath+".temp"
 
 			if is_path_exists_or_creatable(filepath):
 				if not os.path.isfile(filepath): # Ensure we don't overwrite
 						logging.debug("FILE WRITE: "+filepath)
-						with open(filepath, 'w', encoding="utf8") as f:
+						with open(tempfilepath, 'w', encoding="utf8", errors="ignore") as f:
 								f.write(response.body)
+						os.rename(tempfilepath, filepath) # Move finished file to final path
 			else:
 				logging.warn("FILE INVALID PATH: "+filepath)
 
@@ -144,7 +151,12 @@ class ArchiverCrawler():
 			mediaUrls += result["urls"]
 			mediaPaths += result["paths"]
 
-			print(nextLinks, mediaUrls, mediaPaths)
+			logging.debug("NextLinks:")
+			logging.debug(nextLinks)
+			logging.debug("MediaURLs:")
+			logging.debug(mediaUrls)
+			logging.debug("MediaPaths:")
+			logging.debug(mediaPaths)
 
 			# Filter media already downloaded
 			for idx in range(0, len(mediaPaths)):
@@ -152,8 +164,6 @@ class ArchiverCrawler():
 				url = mediaUrls[idx]
 
 				if is_path_exists_or_creatable(path) and not os.path.isfile(path):
-					if "." not in parseUtils.extractURLParts(url)["page"]:
-						mediaPaths[idx]+=".unknown"
 					logging.debug("MEDIA: downloading "+url)
 
 					# Do the download
@@ -171,47 +181,48 @@ class ArchiverCrawler():
 					# First we check if a local copy exists on the disk
 					filepath = self.get_url_filepath(link)
 					if is_path_exists_or_creatable(filepath) and os.path.isfile(filepath):
-						with open(filepath, 'r') as file:
+						with open(filepath, 'r', encoding="utf8", errors="ignore") as file:
 							filedata = file.read()
 						logging.debug("RESPONSE: Local file at "+filepath+" being used")
 						res = self.parse_page(LocalRequest(link, filedata))
 						if not res: #Error discovered
 							logging.warn("NoneType in response discovered; was probably media (LocalCache)")
-							self.downloadMedia(link, filepath)
+							self.download_media(link, filepath)
 					else:
 						# No local resource exists, so crawl it
 						logging.debug("RESPONSE: Remote dir "+link+" being used")
 						res = self.parse_page(SplashRequest(link))
 						if not res:
 							logging.warn("NoneType in response discovered; was probably media (SplashRequest)")
-							self.downloadMedia(link, self.get_url_filepath(link))
+							self.download_media(link, self.get_url_filepath(link))
 
 			else:
 				logging.debug("NO LINKS FOUND IN: "+response.url)
 
 		return True
 
-	def download_media(self, url, filepath):
+	def download_media(self, url, filepath, subdirs=True):
 		url = url.strip().strip('"')
 		filepath = filepath.strip().strip('"')
+		tempfilepath = filepath+".temp"
+
+		if subdirs:
+			parseUtils.createSubdirs(os.path.join(cwd, self.config["folderName"]), parseUtils.extractURLParts(url)["fullPath"])
 
 		if not os.path.exists(filepath):
 			r = requests.get(url, stream=True)
 			if r.status_code == 200:
-				with open(filepath, 'wb') as f:
+				with open(tempfilepath, 'wb') as f:
 					for chunk in r:
 						f.write(chunk)
+				os.rename(tempfilepath, filepath) # Move finished file to final path
 			else:
 				return False
-		else:
-			return False
 
 		return True
 
 	def get_url_filepath(self, link):
 		parts = parseUtils.extractURLParts(link)
 		filepath = os.path.join(cwd, self.config["folderName"], *parts["fullPath"], parts["page"])
-		if "." not in parts["page"]:
-			filepath+=".unknown"
 
 		return filepath

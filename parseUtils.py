@@ -6,10 +6,11 @@ cwd = os.path.dirname(os.path.realpath(__file__))
 
 def extractURLParts(url):
 	parsed = urlparse(url.strip())
-	if len(parsed.path) == 0 or parsed.path == "/" or parsed.path == None:
+
+	if len(parsed.path) == 0 or parsed.path == "/" or parsed.path == None or parsed.path == "":
 		return({
 			"subdir": parsed.netloc,
-			"page": "", #default to base page
+			"page": "index", #default to base page
 			"path": [],
 			"fullPath": [parsed.netloc]
 		})
@@ -20,7 +21,7 @@ def extractURLParts(url):
 			page = path[-1] # page is top dir
 			path = path[:-1] # page is everything else
 		else:
-			page = ""
+			page = "index"
 
 		return({
 				"subdir": parsed.netloc,
@@ -91,7 +92,6 @@ def forceAbsoluteLink(baseURL, linkURL):
 	if baseLoc[-1] != "/":
 		baseLoc += "/"
 
-	print(baseLoc)
 	if parts["subdir"] == "":
 		return urljoin(baseLoc,linkURL)
 	else:
@@ -117,5 +117,24 @@ def removeEmptyFolders(path):
 		logging.debug("Removing empty folder: "+path)
 		os.rmdir(path)
 		count+=1
+
+	return count
+
+def removeTempFiles(path):
+	count = 0
+	if not os.path.isdir(path):
+		return 0
+
+	# recurse to subfolders
+	files = os.listdir(path)
+	if len(files):
+		for f in files:
+			fullpath = os.path.join(path, f)
+			if os.path.isdir(fullpath):
+				count += removeTempFiles(fullpath)
+			elif os.path.isfile(fullpath) and ".temp" in fullpath:
+				logging.debug("Removing temp file: "+fullpath)
+				count+=1
+				os.remove(fullpath)
 
 	return count
