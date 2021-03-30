@@ -78,126 +78,129 @@ class ArchiverCrawler():
 		self.pbar.set_description(response.url)
 		self.pbar.refresh()
 
-		if response.status != 404:
-			# Make sure we have something to parse
-			if response.body is None:
-				logging.warn("Response.body=None on "+response.url)
-				return False
-			
-			# Extract subdirectory, page, path from url
-			URLparts = parseUtils.extractURLParts(response.url)
-			
-			# Ensure the subdirs exist, since we're not in a root directory
-			parseUtils.createSubdirs(os.path.join(cwd, self.config["folderName"]), URLparts["fullPath"])
-			filepath = self.get_url_filepath(response.url)
-			tempfilepath = filepath+".temp"
+		try:
+			if response.status != 404:
+				# Make sure we have something to parse
+				if response.body is None:
+					logging.warn("Response.body=None on "+response.url)
+					return False
+				
+				# Extract subdirectory, page, path from url
+				URLparts = parseUtils.extractURLParts(response.url)
+				
+				# Ensure the subdirs exist, since we're not in a root directory
+				parseUtils.createSubdirs(os.path.join(cwd, self.config["folderName"]), URLparts["fullPath"])
+				filepath = self.get_url_filepath(response.url)
+				tempfilepath = filepath+".temp"
 
-			if is_path_exists_or_creatable(filepath):
-				if not os.path.isfile(filepath): # Ensure we don't overwrite
+				if is_path_exists_or_creatable(filepath):
+					if not os.path.exists(filepath): # Ensure we don't overwrite
 						logging.debug("FILE WRITE: "+filepath)
 						with open(tempfilepath, 'w', encoding="utf8", errors="ignore") as f:
 								f.write(response.body)
 						os.rename(tempfilepath, filepath) # Move finished file to final path
-			else:
-				logging.warn("FILE INVALID PATH: "+filepath)
-
-
-			# Define links array
-			resources = []
-			tempResources = []
-
-			mediaUrls = []
-			mediaPaths = []
-
-			nextLinks = []
-			
-			# Extract all media and links
-			tempResources += response.css('*::attr(src)').getall()
-			tempResources += response.css('*::attr(href)').getall()
-			tempResources += response.css('*::attr(background)').getall()
-
-			# Make things absolute and clean it
-			for idx in range(0, len(tempResources)):
-				tempResources[idx] = parseUtils.cleanLink(parseUtils.forceAbsoluteLink(response.url, tempResources[idx]))
-			tempResources = [i for i in tempResources if i] # Filter "None" invalid links
-
-			# Filter non germane links
-			for res in tempResources:
-				for allowedDomain in self.allowed_domains:
-					if allowedDomain in res:
-						resources.append(res)
-						break
-
-			tempResources = resources # reuse for next filtering step
-			resources = []
-
-			# Filter by media file
-			for resource in tempResources:
-				isMediaFile = False
-				for ext in mediaExtensions:
-					if "."+ext in resource:
-						isMediaFile = True
-
-				if isMediaFile:
-					resources.append(resource)
-				elif (resource not in self.links): # It's a link, so add it to links collection and links to crawl
-					self.links.append(resource)
-					nextLinks.append(resource)
-			del tempResources # Free mem
-
-			# Extract the media links
-			result = parseUtils.extractMedia(self.config, response.url, resources) # Remaining resources are all media files
-			del resources # Free mem
-			mediaUrls += result["urls"]
-			mediaPaths += result["paths"]
-
-			logging.debug("NextLinks:")
-			logging.debug(nextLinks)
-			logging.debug("MediaURLs:")
-			logging.debug(mediaUrls)
-			logging.debug("MediaPaths:")
-			logging.debug(mediaPaths)
-
-			# Filter media already downloaded
-			for idx in range(0, len(mediaPaths)):
-				path = mediaPaths[idx]
-				url = mediaUrls[idx]
-
-				if is_path_exists_or_creatable(path) and not os.path.isfile(path):
-					logging.debug("MEDIA: downloading "+url)
-
-					# Do the download
-					self.download_media(url, path)
 				else:
-					logging.debug("MEDIA: Local copy of "+url+" being used")
+					logging.warn("FILE INVALID PATH: "+filepath)
 
-			if len(nextLinks) > 0:
-				logging.debug("\nDiscovered "+str(len(nextLinks))+" new link(s)")
-				self.discoveredLinks+=len(nextLinks)
-				self.pbar.total = self.discoveredLinks
-				self.pbar.refresh()
 
-				for link in nextLinks:
-					# First we check if a local copy exists on the disk
-					filepath = self.get_url_filepath(link)
-					if is_path_exists_or_creatable(filepath) and os.path.isfile(filepath):
-						with open(filepath, 'r', encoding="utf8", errors="ignore") as file:
-							filedata = file.read()
-						logging.debug("RESPONSE: Local file at "+filepath+" being used")
-						res = self.parse_page(LocalRequest(link, filedata))
-						if not res: #Error discovered
-							logging.warn("NoneType in response discovered; was probably media (LocalCache)")
-							self.download_media(link, filepath)
+				# Define links array
+				resources = []
+				tempResources = []
+
+				mediaUrls = []
+				mediaPaths = []
+
+				nextLinks = []
+				
+				# Extract all media and links
+				tempResources += response.css('*::attr(src)').getall()
+				tempResources += response.css('*::attr(href)').getall()
+				tempResources += response.css('*::attr(background)').getall()
+
+				# Make things absolute and clean it
+				for idx in range(0, len(tempResources)):
+					tempResources[idx] = parseUtils.cleanLink(parseUtils.forceAbsoluteLink(response.url, tempResources[idx]))
+				tempResources = [i for i in tempResources if i] # Filter "None" invalid links
+
+				# Filter non germane links
+				for res in tempResources:
+					for allowedDomain in self.allowed_domains:
+						if allowedDomain in res:
+							resources.append(res)
+							break
+
+				tempResources = resources # reuse for next filtering step
+				resources = []
+
+				# Filter by media file
+				for resource in tempResources:
+					isMediaFile = False
+					for ext in mediaExtensions:
+						if "."+ext in resource:
+							isMediaFile = True
+
+					if isMediaFile:
+						resources.append(resource)
+					elif (resource not in self.links): # It's a link, so add it to links collection and links to crawl
+						self.links.append(resource)
+						nextLinks.append(resource)
+				del tempResources # Free mem
+
+				# Extract the media links
+				result = parseUtils.extractMedia(self.config, response.url, resources) # Remaining resources are all media files
+				del resources # Free mem
+				mediaUrls += result["urls"]
+				mediaPaths += result["paths"]
+
+				logging.debug("NextLinks:")
+				logging.debug(nextLinks)
+				logging.debug("MediaURLs:")
+				logging.debug(mediaUrls)
+				logging.debug("MediaPaths:")
+				logging.debug(mediaPaths)
+
+				# Filter media already downloaded
+				for idx in range(0, len(mediaPaths)):
+					path = mediaPaths[idx]
+					url = mediaUrls[idx]
+
+					if is_path_exists_or_creatable(path) and not os.path.isfile(path):
+						logging.debug("MEDIA: downloading "+url)
+
+						# Do the download
+						self.download_media(url, path)
 					else:
-						# No local resource exists, so crawl it
-						logging.debug("RESPONSE: Remote dir "+link+" being used")
-						res = self.parse_page(SplashRequest(link))
-						if not res:
-							logging.warn("NoneType in response discovered; was probably media (SplashRequest)")
-							self.download_media(link, self.get_url_filepath(link))
+						logging.debug("MEDIA: Local copy of "+url+" being used")
 
-			else:
-				logging.debug("NO LINKS FOUND IN: "+response.url)
+				if len(nextLinks) > 0:
+					logging.debug("\nDiscovered "+str(len(nextLinks))+" new link(s)")
+					self.discoveredLinks+=len(nextLinks)
+					self.pbar.total = self.discoveredLinks
+					self.pbar.refresh()
+
+					for link in nextLinks:
+						# First we check if a local copy exists on the disk
+						filepath = self.get_url_filepath(link)
+						if is_path_exists_or_creatable(filepath) and os.path.isfile(filepath):
+							with open(filepath, 'r', encoding="utf8", errors="ignore") as file:
+								filedata = file.read()
+							logging.debug("RESPONSE: Local file at "+filepath+" being used")
+							res = self.parse_page(LocalRequest(link, filedata))
+							if not res: #Error discovered
+								logging.warn("NoneType in response discovered; was probably media (LocalCache)")
+								self.download_media(link, filepath)
+						else:
+							# No local resource exists, so crawl it
+							logging.debug("RESPONSE: Remote dir "+link+" being used")
+							res = self.parse_page(SplashRequest(link))
+							if not res:
+								logging.warn("NoneType in response discovered; was probably media (SplashRequest)")
+								self.download_media(link, self.get_url_filepath(link))
+
+				else:
+					logging.debug("NO LINKS FOUND IN: "+response.url)
+		except Exception as e:
+			logging.warn("Uhoh, something bad happened processing '"+response.url+"'. Error:\n"+str(e))
 
 		return True
 

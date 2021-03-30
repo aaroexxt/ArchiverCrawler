@@ -80,6 +80,9 @@ mediaExtensions = [
 	"pps",
 	"ppt",
 	"pptx",
+	"pdf",
+	"doc",
+	"docx",
 	# Other
 	"mpg",
 	"mpeg",
@@ -93,5 +96,22 @@ mediaExtensions = [
 	"ogg",
 	"webm",
 	"mp4",
-	"m4v"
+	"m4v",
+	# Scripting
+	"js",
+	"css",
+	"scss",
+	"py",
+	"rb",
+	"svg",
+	"rss",
+	"xml",
+	"dll",
+	"cfm",
+	"yaws",
+	"jsp",
+	"jspx",
+	"wss",
+	"do",
+	"action"
 ]

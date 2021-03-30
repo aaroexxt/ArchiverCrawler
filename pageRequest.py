@@ -8,8 +8,8 @@ class SplashRequest():
 			'wait': 0.25, 
 			'html5_media': 1,
 			'html': 1,
-			'resource_timeout': 10,
-			'timeout': 20
+			'resource_timeout': 2,
+			'timeout': 10
 		})
 		self.url = url
 		self.status = r.status_code
