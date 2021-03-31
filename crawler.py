@@ -62,7 +62,7 @@ class ArchiverCrawler():
 			logging.info("Cleaned directory structure and removed %d temporary files from previous run", num)
 
 		for url in self.start_urls:
-			self.parse_page(SplashRequest(url, self.allowed_domains))
+			self.parse_page(SplashRequest(url, self.allowed_domains, self.config["splashStrictDomains"]))
 		self.cleanup()
 	
 	def cleanup(self):
@@ -218,7 +218,7 @@ class ArchiverCrawler():
 						else:
 							# No local resource exists, so crawl it
 							logging.debug("RESPONSE: Remote dir "+link+" being used")
-							res = self.parse_page(SplashRequest(link, self.allowed_domains))
+							res = self.parse_page(SplashRequest(link, self.allowed_domains, self.config["splashStrictDomains"]))
 							if not res:
 								logging.warn("NoneType in response discovered; was probably media (SplashRequest)")
 								self.download_media(link, self.get_url_filepath(link))
