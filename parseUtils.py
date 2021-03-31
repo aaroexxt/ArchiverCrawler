@@ -10,7 +10,7 @@ def extractURLParts(url):
 	if len(parsed.path) == 0 or parsed.path == "/" or parsed.path == None or parsed.path == "":
 		return({
 			"subdir": parsed.netloc,
-			"page": "index", #default to base page
+			"page": "index.html", #default to base page
 			"path": [],
 			"fullPath": [parsed.netloc]
 		})
@@ -21,7 +21,7 @@ def extractURLParts(url):
 			page = path[-1] # page is top dir
 			path = path[:-1] # page is everything else
 		else:
-			page = "index"
+			page = "index.html"
 
 		return({
 				"subdir": parsed.netloc,

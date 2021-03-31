@@ -31,6 +31,7 @@ class ArchiverCrawler():
 		self.config = config
 		self.start_urls = config["startUrls"]
 		self.allowed_domains = config["allowedDomains"]
+		self.blocked_subdomains = config["blockedSubdomains"]
 		self.discoveredLinks = len(self.start_urls)
 
 		print("ArchiverCrawler instantiated\nstartUrls:")
@@ -39,6 +40,9 @@ class ArchiverCrawler():
 		print("allowedDomains:")
 		for domain in self.allowed_domains:
 			print("\t'"+domain+"'")
+		print("blockedSubdomains:")
+		for bsd in self.blocked_subdomains:
+			print("\t'"+bsd+"'")
 
 		# Ensure we have base directory
 		direc = os.path.join(cwd, self.config["folderName"])
@@ -58,7 +62,7 @@ class ArchiverCrawler():
 			logging.info("Cleaned directory structure and removed %d temporary files from previous run", num)
 
 		for url in self.start_urls:
-			self.parse_page(SplashRequest(url))
+			self.parse_page(SplashRequest(url, self.allowed_domains))
 		self.cleanup()
 	
 	def cleanup(self):
@@ -124,26 +128,44 @@ class ArchiverCrawler():
 
 				# Filter non germane links
 				for res in tempResources:
-					for allowedDomain in self.allowed_domains:
-						if allowedDomain in res:
-							resources.append(res)
-							break
+					if self.url_allowed(res):
+						resources.append(res)
+					else:
+						logging.debug("GotLink nOK: "+res)
 
 				tempResources = resources # reuse for next filtering step
 				resources = []
 
 				# Filter by media file
-				for resource in tempResources:
-					isMediaFile = False
-					for ext in mediaExtensions:
-						if "."+ext in resource:
-							isMediaFile = True
+				with requests.Session() as s:
+					for resource in tempResources:
+						isMediaFile = False
+						for ext in mediaExtensions:
+							if "."+ext in resource:
+								isMediaFile = True
 
-					if isMediaFile:
-						resources.append(resource)
-					elif (resource not in self.links): # It's a link, so add it to links collection and links to crawl
-						self.links.append(resource)
-						nextLinks.append(resource)
+						if isMediaFile:
+							resources.append(resource)
+						else:
+							if resource not in self.links:
+								self.links.append(resource)
+								try:
+									# It's a link, so first get all redirects
+									filepath = self.get_url_filepath(resource)
+									if is_path_exists_or_creatable(filepath) and os.path.isfile(filepath): # We have a local copy already? Well then we don't need to do remote fetch and follow
+										nextLinks.append(resource)
+									else:
+										with s.head(resource, allow_redirects=True, timeout=12) as followedLink: # Don't get the content, just redirect headers
+											if followedLink.url not in self.links and self.url_allowed(followedLink.url):
+												if followedLink.url != resource:
+													self.links.append(followedLink.url)
+												# It's a link, so add it to links collection and links to crawl
+												nextLinks.append(followedLink.url)
+											else:
+												logging.debug("FollowLink nOK: "+resource+" | "+followedLink.url+", seen="+str(followedLink.url in self.links)+", allowed="+str(self.url_allowed(followedLink.url)))
+								except Exception as e:
+									logging.warn("Uhoh, something bad happened while following link '"+resource+"': "+str(e))
+							
 				del tempResources # Free mem
 
 				# Extract the media links
@@ -160,17 +182,21 @@ class ArchiverCrawler():
 				logging.debug(mediaPaths)
 
 				# Filter media already downloaded
-				for idx in range(0, len(mediaPaths)):
-					path = mediaPaths[idx]
-					url = mediaUrls[idx]
+				with requests.Session() as s:
+					for idx in range(0, len(mediaPaths)):
+						path = mediaPaths[idx]
+						url = mediaUrls[idx]
 
-					if is_path_exists_or_creatable(path) and not os.path.isfile(path):
-						logging.debug("MEDIA: downloading "+url)
+						try:
+							if is_path_exists_or_creatable(path) and not os.path.isfile(path):
+								logging.debug("MEDIA: downloading "+url)
 
-						# Do the download
-						self.download_media(url, path)
-					else:
-						logging.debug("MEDIA: Local copy of "+url+" being used")
+								# Do the download
+								self.download_media_session(url, path, s)
+							else:
+								logging.debug("MEDIA: Local copy of "+url+" being used")
+						except Exception as e:
+							logging.warn("Uhoh, something bad happened when trying to download '"+url+"': "+e)
 
 				if len(nextLinks) > 0:
 					logging.debug("\nDiscovered "+str(len(nextLinks))+" new link(s)")
@@ -192,7 +218,7 @@ class ArchiverCrawler():
 						else:
 							# No local resource exists, so crawl it
 							logging.debug("RESPONSE: Remote dir "+link+" being used")
-							res = self.parse_page(SplashRequest(link))
+							res = self.parse_page(SplashRequest(link, self.allowed_domains))
 							if not res:
 								logging.warn("NoneType in response discovered; was probably media (SplashRequest)")
 								self.download_media(link, self.get_url_filepath(link))
@@ -219,7 +245,31 @@ class ArchiverCrawler():
 					for chunk in r:
 						f.write(chunk)
 				os.rename(tempfilepath, filepath) # Move finished file to final path
+				r.close()
 			else:
+				r.close()
+				return False
+
+		return True
+
+	def download_media_session(self, url, filepath, session, subdirs=True):
+		url = url.strip().strip('"')
+		filepath = filepath.strip().strip('"')
+		tempfilepath = filepath+".temp"
+
+		if subdirs:
+			parseUtils.createSubdirs(os.path.join(cwd, self.config["folderName"]), parseUtils.extractURLParts(url)["fullPath"])
+
+		if not os.path.exists(filepath):
+			r = session.get(url, stream=True)
+			if r.status_code == 200:
+				with open(tempfilepath, 'wb') as f:
+					for chunk in r:
+						f.write(chunk)
+				os.rename(tempfilepath, filepath) # Move finished file to final path
+				r.close()
+			else:
+				r.close()
 				return False
 
 		return True
@@ -229,3 +279,17 @@ class ArchiverCrawler():
 		filepath = os.path.join(cwd, self.config["folderName"], *parts["fullPath"], parts["page"])
 
 		return filepath
+
+	def url_allowed(self, link):
+		for allowedDomain in self.allowed_domains:
+			if allowedDomain in link:
+				blocked = False
+				for blockedSubdomain in self.blocked_subdomains:
+					if blockedSubdomain in link:
+						blocked = True
+						break
+
+				if not blocked and "@" not in link: # Filter emails
+					return True
+
+		return False

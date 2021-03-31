@@ -2,14 +2,22 @@ import requests
 from parsel import Selector
 
 class SplashRequest():
-	def __init__(self, url, **kw):
+	def __init__(self, url, adArr, **kw):
+		if len(adArr) == 0:
+			allowedDomains = "*"
+		elif len(adArr) == 1:
+			allowedDomains = adArr
+		else:
+			allowedDomains = ",".join(adArr)
+
 		r = requests.get('http://localhost:8050/render.html', params={
 			'url': url,
 			'wait': 0.25, 
 			'html5_media': 1,
 			'html': 1,
-			'resource_timeout': 2,
-			'timeout': 10
+			'resource_timeout': 1,
+			'allowed_domains': allowedDomains,
+			'timeout': 12
 		})
 		self.url = url
 		self.status = r.status_code
