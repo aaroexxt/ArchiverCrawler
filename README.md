@@ -7,6 +7,6 @@
 
 ## How to Use
 
- First, setup your scrape settings in config.json (use exampleConfig.json to give you an idea)
+ First, setup your scrape settings in config.json (use `configSample.json` to give you an idea)
 
  Then, start crawling with `python main.py` and you should be set! It'll display progress in realtime as the website is explored. Keep in mind though, as it discovers more valid pages the progress bar may drop (as it only reflects progress based on the current explored pages).
