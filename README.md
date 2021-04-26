@@ -1,5 +1,5 @@
 # ArchiverCrawler
- Crawls website dynamically by following links on pages and saves all media along the way, to hopefully allow completely local viewing of website
+ Crawls website dynamically by following links on pages and saves all media along the way, to hopefully allow completely local viewing of website or dataset collection
 
 ## Use Requirements
 
