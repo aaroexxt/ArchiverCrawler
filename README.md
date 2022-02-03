@@ -3,7 +3,9 @@
 
 ## Use Requirements
 
- Requires tqdm, logging, requests, urllib, json with Python 3
+ Requires tqdm, logging, requests, urllib, json, parsel in Python 3
+ 
+ Install them all by running:
  
  `pip install tqdm logging requests urllib json parsel`
 
