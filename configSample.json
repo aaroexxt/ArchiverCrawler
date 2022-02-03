@@ -2,5 +2,6 @@
 	"folderName": "Sample_Dump",
 	"startUrls": ["http://example.com/"],
 	"allowedDomains": ["example.com"],
-	"blockedSubdomains": ["example.com/example/blockMe"]
+	"blockedSubdomains": ["example.com/example/blockMe"],
+	"splashStrictDomains": "false"
 }
